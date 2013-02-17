@@ -32,6 +32,11 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
+#ifdef USE_X11
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#endif
+
 static inline void errorf(const char * format, ...)
 {
 	va_list args;
@@ -117,7 +122,25 @@ main(int argc, char *argv[])
 	GLuint program;
 	GLint ret;
 	GLint width, height;
+#ifdef USE_X11
+	Display * X11 = 0;
 
+        if (getenv("DISPLAY")) {
+		XInitThreads();
+		X11 = XOpenDisplay(getenv("DISPLAY"));
+		if (!X11) {
+			fprintf(stderr, "Cannot open X display!\n");
+		} else {
+			display = eglGetDisplay(X11);
+			if(display == EGL_NO_DISPLAY) {
+				fprintf(stderr, "No display found on X11! Framebuffer Mali library installed?\n");
+				XCloseDisplay(X11);
+				X11 = 0;
+			}
+		}
+	}
+	if (!X11)
+#endif
 	display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (display == EGL_NO_DISPLAY)
 		errorf("Error: No display found!\n");
@@ -150,6 +173,55 @@ main(int argc, char *argv[])
 		errorf("Error: eglCreateContext failed: 0x%08X\n",
 			eglGetError());
 
+#ifdef USE_X11
+	if (X11) {
+		XVisualInfo *visInfo, visTemplate;
+		int nvis;
+		int x=0, y=0, w=480, h=480;
+		Window root, xwin;
+		XSetWindowAttributes attr;
+		XSizeHints sizehints;
+		EGLint vid;
+		const char * title = "Mali EGL test";
+
+		if (!eglGetConfigAttrib(display, config, EGL_NATIVE_VISUAL_ID, &vid))
+			errorf("failed to get visual id\n");
+
+		/* The X window visual must match the EGL config */
+		visTemplate.visualid = vid;
+		visInfo = XGetVisualInfo(X11, VisualIDMask, &visTemplate, &nvis);
+		if (!visInfo)
+			errorf("failed to get an visual of id 0x%x\n", vid);
+
+		root = RootWindow(X11, DefaultScreen(X11));
+
+		attr.background_pixel = 0;
+		attr.border_pixel = 0;
+		attr.colormap = XCreateColormap(X11, root, visInfo->visual, AllocNone);
+		attr.event_mask = StructureNotifyMask | ExposureMask ;
+		xwin = XCreateWindow(X11, root, x, y, w, h, 0, visInfo->depth, InputOutput, visInfo->visual,
+				     CWBackPixel | CWBorderPixel | CWColormap | CWEventMask
+				     , &attr);
+		if (!xwin)
+			errorf("failed to create a window\n");
+
+		XFree(visInfo);
+
+		sizehints.x = x;
+		sizehints.y = y;
+		sizehints.width  = w;
+		sizehints.height = h;
+		sizehints.flags = USSize | USPosition;
+		XSetNormalHints(X11, xwin, &sizehints);
+		XSetStandardProperties(X11, xwin,
+				       title, title, None, (char **) NULL, 0, &sizehints);
+
+		XMapWindow(X11, xwin);
+
+		surface = eglCreateWindowSurface(display, config, xwin, NULL);
+
+	} else
+#endif
 	surface = eglCreateWindowSurface(display, config, &native_window,
 					 window_attribute_list);
 	if (surface == EGL_NO_SURFACE)
@@ -240,6 +312,23 @@ main(int argc, char *argv[])
 	}
 	glUseProgram(program);
 
+#ifdef USE_X11
+	while (1) {
+		XEvent event;
+		if(X11) {
+			XNextEvent(X11, &event);
+			switch (event.type) {
+				case DestroyNotify:
+					return 0;
+				case ConfigureNotify:
+					width = event.xconfigure.width;
+					height = event.xconfigure.height;
+				case Expose:
+					break;
+			}
+		}
+#endif
+
 	glViewport(0, 0, width, height);
 
 	glClearColor(0.2, 0.2, 0.2, 1.0);
@@ -254,6 +343,10 @@ main(int argc, char *argv[])
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 
 	eglSwapBuffers(display, surface);
-
-	return 0;
+#ifdef USE_X11
+	if(!X11) return 0;
+	}
+#else
+        return 0;
+#endif
 }
