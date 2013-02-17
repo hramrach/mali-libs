@@ -28,8 +28,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+
+static inline void errorf(const char * format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	vfprintf(stderr, format, args);
+	va_end(args);
+	exit(1);
+}
 
 struct mali_native_window native_window = {
 	.width = 480,
@@ -109,10 +119,8 @@ main(int argc, char *argv[])
 	GLint width, height;
 
 	display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	if (display == EGL_NO_DISPLAY) {
-		fprintf(stderr, "Error: No display found!\n");
-		return -1;
-	}
+	if (display == EGL_NO_DISPLAY)
+		errorf("Error: No display found!\n");
 
 	if (eglInitialize(display, &egl_major, &egl_minor) == EGL_FALSE) {
 		GLuint r;
@@ -138,40 +146,30 @@ main(int argc, char *argv[])
 
 	context = eglCreateContext(display, config, EGL_NO_CONTEXT,
 				   context_attribute_list);
-	if (context == EGL_NO_CONTEXT) {
-		fprintf(stderr, "Error: eglCreateContext failed: 0x%08X\n",
+	if (context == EGL_NO_CONTEXT)
+		errorf("Error: eglCreateContext failed: 0x%08X\n",
 			eglGetError());
-		return -1;
-	}
 
 	surface = eglCreateWindowSurface(display, config, &native_window,
 					 window_attribute_list);
-	if (surface == EGL_NO_SURFACE) {
-		fprintf(stderr, "Error: eglCreateWindowSurface failed: "
+	if (surface == EGL_NO_SURFACE)
+		errorf("Error: eglCreateWindowSurface failed: "
 			"0x%08X\n", eglGetError());
-		return -1;
-	}
 
 	if (!eglQuerySurface(display, surface, EGL_WIDTH, &width) ||
-	    !eglQuerySurface(display, surface, EGL_HEIGHT, &height)) {
-		fprintf(stderr, "Error: eglQuerySurface failed: 0x%08X\n",
+	    !eglQuerySurface(display, surface, EGL_HEIGHT, &height))
+		errorf("Error: eglQuerySurface failed: 0x%08X\n",
 			eglGetError());
-		return -1;
-	}
 	printf("Surface size: %dx%d\n", width, height);
 
-	if (!eglMakeCurrent(display, surface, surface, context)) {
-		fprintf(stderr, "Error: eglMakeCurrent() failed: 0x%08X\n",
+	if (!eglMakeCurrent(display, surface, surface, context))
+		errorf("Error: eglMakeCurrent() failed: 0x%08X\n",
 			eglGetError());
-		return -1;
-	}
 
 	vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-	if (!vertex_shader) {
-		fprintf(stderr, "Error: glCreateShader(GL_VERTEX_SHADER) "
+	if (!vertex_shader)
+		errorf("Error: glCreateShader(GL_VERTEX_SHADER) "
 			"failed: 0x%08X\n", glGetError());
-		return -1;
-	}
 
 	glShaderSource(vertex_shader, 1, &vertex_shader_source, NULL);
 	glCompileShader(vertex_shader);
@@ -192,11 +190,9 @@ main(int argc, char *argv[])
 	}
 
 	fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-	if (!fragment_shader) {
-		fprintf(stderr, "Error: glCreateShader(GL_FRAGMENT_SHADER) "
+	if (!fragment_shader)
+		errorf("Error: glCreateShader(GL_FRAGMENT_SHADER) "
 			"failed: 0x%08X\n", glGetError());
-		return -1;
-	}
 
 	glShaderSource(fragment_shader, 1, &fragment_shader_source, NULL);
 	glCompileShader(fragment_shader);
@@ -217,10 +213,8 @@ main(int argc, char *argv[])
 	}
 
 	program = glCreateProgram();
-	if (!program) {
-		fprintf(stderr, "Error: failed to create program!\n");
-		return -1;
-	}
+	if (!program)
+		errorf("Error: failed to create program!\n");
 
 	glAttachShader(program, vertex_shader);
 	glAttachShader(program, fragment_shader);
